@@ -137,30 +137,16 @@ class Database:
                 """,
                 *params,
             )
-
-            rating_clause = clause
-            rating_params = params.copy()
-            if since is not None:
-                rating_clause = " AND e.happened_at >= $2"
-                rating_params = [min_records, since]
-            else:
-                rating_clause = ""
-                rating_params = [min_records]
-
-            results["rating"] = await conn.fetch(
-                f"""
-                SELECT COALESCE(u.username, u.first_name) AS display_name,
+            results["rating_by_type"] = await conn.fetch(
+                """
+                SELECT t.code,
                        ROUND(AVG(e.rating)::numeric, 2) AS avg_rating,
                        COUNT(*) AS cnt
                 FROM events e
-                JOIN users u ON u.id = e.user_id
-                WHERE TRUE{rating_clause}
-                GROUP BY u.id
-                HAVING COUNT(*) >= $1
-                ORDER BY avg_rating DESC
-                LIMIT 10
-                """,
-                *rating_params,
+                JOIN types t ON t.id = e.type_id
+                GROUP BY t.code
+                ORDER BY t.code
+                """
             )
         return results
 
@@ -170,7 +156,8 @@ class Database:
         query = """
             SELECT t.code,
                    COUNT(*) AS total_events,
-                   COALESCE(SUM(e.spent_minutes), 0) AS total_minutes
+                   COALESCE(SUM(e.spent_minutes), 0) AS total_minutes,
+                   ROUND(AVG(e.rating)::numeric, 2) AS avg_rating
             FROM events e
             JOIN types t ON t.id = e.type_id
             WHERE e.user_id = $1 AND e.happened_at >= $2

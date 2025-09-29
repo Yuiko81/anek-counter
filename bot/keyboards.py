@@ -5,12 +5,14 @@ from .schemas import RatingCallback
 
 JOKE_BUTTON = "➕ Анекдот"
 STORY_BUTTON = "➕ Кулстори"
+TOP_BUTTON = "🏆 Топ"
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=JOKE_BUTTON), KeyboardButton(text=STORY_BUTTON)],
+            [KeyboardButton(text=TOP_BUTTON)],
         ],
         resize_keyboard=True,
         input_field_placeholder="Выбери тип записи или команду",

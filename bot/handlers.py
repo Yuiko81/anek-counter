@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
 from .database import Database
-from .keyboards import JOKE_BUTTON, STORY_BUTTON, main_menu_keyboard, rating_keyboard
+from .keyboards import JOKE_BUTTON, STORY_BUTTON, TOP_BUTTON, main_menu_keyboard, rating_keyboard
 from .schemas import RatingCallback
 from .states import AddEventState
 from .texts import HELP_TEXT, START_GREETING, added_event_message, global_summary_text, personal_summary_text
@@ -27,6 +27,9 @@ TYPE_LABELS = {
 
 def register_handlers(dp: Dispatcher, database: Database) -> None:
     router = Router()
+
+    async def handle_top(message: Message, args: str | None) -> None:
+        await _handle_top(database, message, args)
 
     @router.message(Command("start"))
     async def cmd_start(message: Message, state: FSMContext) -> None:
@@ -123,19 +126,11 @@ def register_handlers(dp: Dispatcher, database: Database) -> None:
 
     @router.message(Command("top"))
     async def cmd_top(message: Message, command: CommandObject) -> None:
-        await _ensure_user(database, message)
-        period = "week"
-        min_records = 5
-        if command.args:
-            parts = command.args.split()
-            if parts:
-                period = parse_period(parts[0])
-            if len(parts) > 1 and parts[1].isdigit():
-                min_records = max(1, int(parts[1]))
+        await handle_top(message, command.args)
 
-        tops = await database.global_top(period, min_records)
-        text = _format_top(tops)
-        await message.answer(text, reply_markup=main_menu_keyboard())
+    @router.message(F.text == TOP_BUTTON)
+    async def btn_top(message: Message) -> None:
+        await handle_top(message, None)
 
     @router.message(Command("cancel"))
     async def cmd_cancel(message: Message, state: FSMContext) -> None:
@@ -187,9 +182,7 @@ def _format_top(tops: dict[str, Any]) -> str:
     sections.append(_format_top_block("Топ анекдотов", tops.get("joke_count", []), key="total"))
     sections.append(_format_top_block("Топ кулстори", tops.get("story_count", []), key="total"))
     sections.append(_format_top_block("Топ по времени", tops.get("time", []), key="total_minutes", suffix=" мин"))
-    sections.append(
-        _format_top_block("Топ по средней оценке", tops.get("rating", []), key="avg_rating", suffix="", decimals=2)
-    )
+    sections.append(_format_rating_block(tops.get("rating_by_type", [])))
     return "\n\n".join(sections)
 
 
@@ -213,4 +206,36 @@ def _format_top_block(title: str, rows: Any, key: str, suffix: str = "", decimal
 async def _debug_user(message: Message, user: Any) -> None:
     # Заглушка для возможного будущего логирования/отладки.
     _ = message, user
+
+
+def _format_rating_block(rows: Any) -> str:
+    if not rows:
+        return "Средний рейтинг по категориям: пока нет данных"
+    labels = {"joke": "анекдоты", "story": "кулстори"}
+    lines = ["Средний рейтинг по категориям"]
+    for row in rows:
+        code = row["code"]
+        label = labels.get(code, code)
+        avg_rating = row["avg_rating"]
+        count = row["cnt"]
+        if avg_rating is None:
+            continue
+        lines.append(f"{label}: {float(avg_rating):.2f} (из {count} оценок)")
+    return "\n".join(lines)
+
+
+async def _handle_top(database: Database, message: Message, args: str | None) -> None:
+    await _ensure_user(database, message)
+    period = "week"
+    min_records = 5
+    if args:
+        parts = args.split()
+        if parts:
+            period = parse_period(parts[0])
+        if len(parts) > 1 and parts[1].isdigit():
+            min_records = max(1, int(parts[1]))
+
+    tops = await database.global_top(period, min_records)
+    text = _format_top(tops)
+    await message.answer(text, reply_markup=main_menu_keyboard())
 
